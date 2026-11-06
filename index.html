@@ -225,6 +225,7 @@ body.calib #cal{display:block}
     <button id="b-obd">OBD2接続</button>
     <button id="b-demo">デモ</button>
     <button id="b-flip">反転: 左右</button>
+    <button id="b-warp">補正: オン</button>
     <button id="b-cal">歪み調整</button>
     <button id="b-full">全画面</button>
     <button id="b-set">設定</button>
@@ -327,6 +328,8 @@ function applyCfg(){
   if (cfg.theme!=='orange') document.body.classList.add('theme-'+cfg.theme);
   applyTransform();
   hud.style.opacity = cfg.bright/100;
+  $('b-warp').textContent = '補正: ' + (cfg.warp==='1' ? 'オン' : 'オフ（元の表示）');
+  $('b-warp').classList.toggle('act', cfg.warp==='1');
   $('b-flip').textContent = '反転: ' + ({h:'左右',v:'上下',hv:'上下左右',none:'なし'})[cfg.flip];
   buildBars();
 }
@@ -723,11 +726,12 @@ $('b-close').addEventListener('click', e => { e.stopPropagation(); hideCtl(); })
 
 /* 歪み調整モード */
 function openCal(){
-  if (cfg.warp!=='1') { cfg.warp='1'; if (!Array.isArray(cfg.wq)) cfg.wq = WARP_PRESET.map(p=>p.slice()); applyTransform(); }
+  if (cfg.warp!=='1') { cfg.warp='1'; if (!Array.isArray(cfg.wq)) cfg.wq = WARP_PRESET.map(p=>p.slice()); applyCfg(); }
   cfg.wq = cfg.wq.map(p=>p.slice());
   document.body.classList.add('calib'); hideCtl(); placeHandles();
 }
 $('b-cal').addEventListener('click', e => { e.stopPropagation(); openCal(); });
+$('b-warp').addEventListener('click', () => { cfg.warp = cfg.warp==='1' ? '0' : '1'; saveCfg(); applyCfg(); });
 $('c-done').addEventListener('click', () => { document.body.classList.remove('calib'); saveCfg(); });
 $('c-preset').addEventListener('click', () => { cfg.wq = WARP_PRESET.map(p=>p.slice()); applyTransform(); });
 $('c-none').addEventListener('click', () => { cfg.wq = WARP_NONE.map(p=>p.slice()); applyTransform(); });
