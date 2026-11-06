@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<title>F32 DRIVE MONITOR HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Shippori+Mincho+B1:wght@800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --main:#ff8a00;      /* メイン色（オレンジ） */
+  --sub:#ffb347;
+  --alert:#ff2a1a;     /* 警告色 */
+  --ok:#3dff6e;
+  --dim:rgba(255,138,0,.22);
+  --num:"Barlow Condensed","Arial Narrow","Roboto Condensed",sans-serif;
+  --jp:"Shippori Mincho B1","Noto Serif JP","Yu Mincho",serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;color:var(--main);font-family:var(--num);user-select:none;-webkit-user-select:none}
+body.theme-green{--main:#3dff6e;--sub:#9dffb5;--dim:rgba(61,255,110,.22)}
+body.theme-cyan{--main:#2fe6ff;--sub:#a5f4ff;--dim:rgba(47,230,255,.22)}
+
+/* ===== HUD本体（反転するのはここだけ） ===== */
+#hud{position:fixed;inset:0;padding:3.2vh 2.6vw;display:grid;
+  grid-template-columns:29fr 42fr 29fr;grid-template-rows:auto 1fr auto;gap:2.4vh 2vw;
+  transform-origin:50% 50%;transition:opacity .3s}
+#hud.flip-h{transform:scaleX(-1)}
+#hud.flip-v{transform:scaleY(-1)}
+#hud.flip-hv{transform:scale(-1,-1)}
+
+.header{grid-column:1/4;display:flex;align-items:center;gap:1.6vw;height:7vh}
+.stripe{flex:0 0 9vw;height:100%;background:repeating-linear-gradient(-45deg,var(--main) 0 1.1vh,transparent 1.1vh 2.2vh);opacity:.9}
+.title{display:flex;flex-direction:column;line-height:1}
+.title .jp{font-family:var(--jp);font-size:3.6vh;letter-spacing:.2em}
+.title .en{font-size:2.3vh;letter-spacing:.35em;color:var(--sub);margin-top:.5vh}
+.header .spacer{flex:1;height:.4vh;background:var(--main);opacity:.6}
+.clock{font-size:6.4vh;font-weight:700;letter-spacing:.05em;line-height:1}
+
+.panel{border:.45vh solid var(--main);position:relative;padding:2vh 1.4vw;display:flex;flex-direction:column;min-height:0}
+.panel::before,.panel::after{content:"";position:absolute;width:2.2vh;height:2.2vh;background:var(--main)}
+.panel::before{top:-1.1vh;left:-1.1vh}
+.panel::after{bottom:-1.1vh;right:-1.1vh}
+.ptag{position:absolute;top:-1.9vh;left:2.4vw;background:#000;padding:0 .8vw;font-size:2.4vh;letter-spacing:.3em;font-weight:700}
+
+/* 左：計測値 */
+.stats{justify-content:space-around}
+.stat{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:.25vh solid var(--dim);padding-bottom:.6vh}
+.stat .lbl{display:flex;flex-direction:column;line-height:1.05}
+.stat .lbl .jp{font-family:var(--jp);font-size:2.9vh;letter-spacing:.08em}
+.stat .lbl .en{font-size:1.9vh;letter-spacing:.25em;color:var(--sub)}
+.stat .val{font-size:7.6vh;font-weight:800;line-height:.9;font-variant-numeric:tabular-nums}
+.stat .unit{font-size:2.4vh;margin-left:.3vw;font-weight:500}
+.stat.warn .val{color:var(--alert)}
+.segbar{display:flex;gap:.35vw;height:2.4vh;margin-top:.6vh}
+.segbar i{flex:1;background:var(--dim)}
+.segbar i.on{background:var(--main)}
+.segbar i.red{background:rgba(255,42,26,.3)}
+.segbar i.red.on{background:var(--alert)}
+
+/* 中央：車速 */
+.speed{align-items:center;justify-content:center}
+.speed .lbl{position:absolute;top:2vh;left:1.6vw;line-height:1.05}
+.speed .lbl .jp{font-family:var(--jp);font-size:3.4vh;display:block}
+.speed .lbl .en{font-size:2vh;letter-spacing:.3em;color:var(--sub)}
+#v-speed{font-size:44vh;font-weight:800;line-height:.82;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-top:3vh}
+.speed .kmh{position:absolute;right:1.6vw;bottom:9vh;font-size:4.6vh;font-weight:700;letter-spacing:.1em}
+.speed .src{position:absolute;right:1.6vw;top:2vh;font-size:2.2vh;letter-spacing:.25em;color:var(--sub)}
+#rpmbar{position:absolute;left:1.4vw;right:1.4vw;bottom:2.2vh;height:3.6vh;margin:0}
+
+/* 右：ギア */
+.right{display:flex;flex-direction:column;gap:2.4vh;min-height:0}
+.gear{flex:1;align-items:center;justify-content:center}
+.gear .lbl{position:absolute;top:2vh;left:1.4vw;line-height:1.05}
+.gear .lbl .jp{font-family:var(--jp);font-size:3.2vh;display:block}
+.gear .lbl .en{font-size:2vh;letter-spacing:.3em;color:var(--sub)}
+#v-gear{font-size:40vh;font-weight:800;line-height:.8;margin-top:3vh;transition:color .1s}
+.gear .box{position:absolute;inset:6.5vh 2.4vw 2.4vh;border:.3vh dashed var(--dim);pointer-events:none}
+.thr{flex:0 0 auto;padding:1.6vh 1.4vw}
+.thr .row{display:flex;justify-content:space-between;align-items:flex-end}
+.thr .jp{font-family:var(--jp);font-size:2.6vh}
+.thr .val{font-size:5.4vh;font-weight:800;line-height:.9}
+
+.footer{grid-column:1/4;display:flex;align-items:center;gap:2vw;height:5vh;font-size:2.6vh;letter-spacing:.2em}
+.chip{display:flex;align-items:center;gap:.6vw;opacity:.85}
+.chip b{width:1.8vh;height:1.8vh;border-radius:50%;background:var(--dim);display:inline-block}
+.chip.on b{background:var(--ok);box-shadow:0 0 1vh var(--ok)}
+.chip.busy b{background:var(--main);animation:blink .6s steps(2) infinite}
+.chip.err b{background:var(--alert)}
+.footer .msg{flex:1;text-align:right;font-family:var(--jp);font-size:3vh;letter-spacing:.15em}
+.footer .msg.alert{color:var(--alert);animation:blink .5s steps(2) infinite}
+
+/* シフトアップ警告 */
+#hud.shift .gear{border-color:var(--alert);background:rgba(255,42,26,.18)}
+#hud.shift #v-gear{color:var(--alert)}
+#hud.shift .gear .lbl .jp::after{content:" ／ 警告";color:var(--alert)}
+#hud.shift-blink .gear{animation:flash .12s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+@keyframes flash{50%{background:transparent}}
+
+/* ===== 操作UI（反転しない） ===== */
+#start{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:30;padding:4vh 4vw}
+#start .card{max-width:900px;width:100%;border:2px solid var(--main);padding:3.5vh 3vw;font-family:system-ui,sans-serif;color:#ffd9a8;line-height:1.6;font-size:15px}
+#start h1{font-family:var(--jp);color:var(--main);font-size:24px;letter-spacing:.15em;margin-bottom:8px}
+#start ol{padding-left:1.4em;margin:10px 0 18px}
+#start .go{display:block;width:100%;padding:16px;font-size:20px;font-weight:700;letter-spacing:.2em;background:var(--main);color:#000;border:0;font-family:var(--jp)}
+
+#ctl{position:fixed;left:0;right:0;bottom:0;z-index:20;background:rgba(15,8,0,.94);border-top:2px solid var(--main);
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:none;font-family:system-ui,sans-serif;color:#ffd9a8;font-size:14px}
+#ctl.show{display:block}
+#ctl .btns{display:flex;flex-wrap:wrap;gap:8px}
+#ctl button{background:#000;color:var(--main);border:1.5px solid var(--main);padding:10px 14px;font-size:14px;font-weight:700;border-radius:4px;font-family:system-ui,sans-serif}
+#ctl button.act{background:var(--main);color:#000}
+#ctl .note{margin-top:8px;font-size:12px;opacity:.8;min-height:1em}
+
+#settings{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.92);display:none;overflow:auto;font-family:system-ui,sans-serif;color:#ffd9a8}
+#settings.show{display:block}
+#settings .inner{max-width:760px;margin:0 auto;padding:20px 18px 60px}
+#settings h2{font-family:var(--jp);color:var(--main);letter-spacing:.15em;margin:14px 0 6px;font-size:18px}
+#settings label{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,138,0,.2);font-size:14px}
+#settings label small{display:block;opacity:.7;font-size:11px}
+#settings input,#settings select{background:#000;color:var(--main);border:1px solid var(--main);padding:8px;font-size:15px;width:150px;border-radius:4px}
+#settings input[type=range]{padding:0}
+#settings .row{display:flex;gap:8px;margin-top:18px}
+#settings button{flex:1;padding:14px;font-size:15px;font-weight:700;background:var(--main);color:#000;border:0;border-radius:4px}
+#settings button.sec{background:#000;color:var(--main);border:1.5px solid var(--main)}
+#settings p.help{font-size:12px;opacity:.75;line-height:1.6;margin-top:6px}
+</style>
+</head>
+<body>
+
+<!-- ===================== HUD ===================== -->
+<div id="hud" class="flip-h">
+  <div class="header">
+    <div class="stripe"></div>
+    <div class="title"><span class="jp">走行監視システム</span><span class="en">DRIVE MONITOR ─ F32 / N20</span></div>
+    <div class="spacer"></div>
+    <div class="clock" id="v-clock">--:--</div>
+  </div>
+
+  <div class="panel stats">
+    <span class="ptag">ENGINE</span>
+    <div>
+      <div class="stat"><div class="lbl"><span class="jp">機関回転数</span><span class="en">RPM</span></div><div><span class="val" id="v-rpm">----</span></div></div>
+    </div>
+    <div>
+      <div class="stat" id="s-boost"><div class="lbl"><span class="jp">過給圧</span><span class="en">BOOST</span></div><div><span class="val" id="v-boost">-.--</span><span class="unit">bar</span></div></div>
+      <div class="segbar" id="boostbar"></div>
+    </div>
+    <div class="stat" id="s-cool"><div class="lbl"><span class="jp">冷却水温</span><span class="en">COOLANT</span></div><div><span class="val" id="v-cool">---</span><span class="unit">℃</span></div></div>
+    <div class="stat" id="s-iat"><div class="lbl"><span class="jp">吸気温度</span><span class="en">INTAKE AIR</span></div><div><span class="val" id="v-iat">---</span><span class="unit">℃</span></div></div>
+    <div class="stat" id="s-volt"><div class="lbl"><span class="jp">電圧</span><span class="en">BATTERY</span></div><div><span class="val" id="v-volt">--.-</span><span class="unit">V</span></div></div>
+  </div>
+
+  <div class="panel speed">
+    <span class="ptag">VELOCITY</span>
+    <div class="lbl"><span class="jp">車速</span><span class="en">SPEED</span></div>
+    <div class="src" id="v-src">NO SIGNAL</div>
+    <div id="v-speed">---</div>
+    <div class="kmh">km/h</div>
+    <div class="segbar" id="rpmbar"></div>
+  </div>
+
+  <div class="right">
+    <div class="panel gear">
+      <span class="ptag">TRANSMISSION</span>
+      <div class="lbl"><span class="jp">変速段</span><span class="en">GEAR (EST.)</span></div>
+      <div class="box"></div>
+      <div id="v-gear">-</div>
+    </div>
+    <div class="panel thr">
+      <div class="row"><span class="jp">スロットル開度</span><span class="val"><span id="v-thr">--</span><span style="font-size:2.6vh">%</span></span></div>
+      <div class="segbar" id="thrbar"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="chip" id="c-gps"><b></b>GPS</div>
+    <div class="chip" id="c-obd"><b></b>OBD2</div>
+    <div class="chip" id="c-demo"><b></b>DEMO</div>
+    <div class="msg" id="v-msg">待機中 ─ STANDBY</div>
+  </div>
+</div>
+
+<!-- ===================== 開始画面 ===================== -->
+<div id="start">
+  <div class="card">
+    <h1>走行監視システム 起動</h1>
+    <div>スマホを使った疑似HUDです。画面を左右反転して表示するので、フロントガラスに映すと正しい向きで読めます。</div>
+    <ol>
+      <li>スマホを横向きにして、<b>画面の上側を自分のほうに向けて</b>ダッシュボードに平らに置きます。</li>
+      <li>画面の明るさを最大にして、自動回転はオフにしておくと安定します。</li>
+      <li>画面をタップすると操作パネルが出ます（GPS・OBD2接続・デモ・反転・設定）。</li>
+      <li>走行中は操作しないでください。設定は停車中に。</li>
+    </ol>
+    <button class="go" id="btn-go">起動する（全画面）</button>
+  </div>
+</div>
+
+<!-- ===================== 操作パネル ===================== -->
+<div id="ctl">
+  <div class="btns">
+    <button id="b-gps">GPS開始</button>
+    <button id="b-obd">OBD2接続</button>
+    <button id="b-demo">デモ</button>
+    <button id="b-flip">反転: 左右</button>
+    <button id="b-full">全画面</button>
+    <button id="b-set">設定</button>
+    <button id="b-close">閉じる</button>
+  </div>
+  <div class="note" id="ctl-note"></div>
+</div>
+
+<!-- ===================== 設定 ===================== -->
+<div id="settings">
+  <div class="inner">
+    <h2>表示</h2>
+    <label>色<select id="o-theme"><option value="orange">オレンジ</option><option value="green">グリーン</option><option value="cyan">シアン</option></select></label>
+    <label><span>明るさ<small>夜にまぶしい時は下げる</small></span><input type="range" id="o-bright" min="20" max="100" step="5"></label>
+    <label><span>反転<small>通常は「左右」。像が逆さまなら他を試す</small></span><select id="o-flip"><option value="h">左右</option><option value="v">上下</option><option value="hv">上下左右</option><option value="none">なし</option></select></label>
+
+    <h2>警告</h2>
+    <label><span>シフトアップ警告の回転数<small>この回転数を超えるとギア表示が赤く点滅</small></span><input type="number" id="o-shift" min="2000" max="8000" step="100"></label>
+    <label><span>水温警告<small>℃</small></span><input type="number" id="o-coolwarn" min="80" max="130" step="1"></label>
+
+    <h2>ギア推定（OBD2使用時）</h2>
+    <label><span>変速機<small>F32 420iのATはZF 8速</small></span><select id="o-trans"><option value="zf8">8速AT（ZF 8HP）</option><option value="mt6">6速MT</option></select></label>
+    <label><span>最終減速比<small>デフのギア比。表示がずれる時はここを調整</small></span><input type="number" id="o-fd" min="2" max="5" step="0.01"></label>
+    <label><span>タイヤ外周（m）<small>225/45R18 ≒ 2.03 / 225/50R17 ≒ 2.06</small></span><input type="number" id="o-tire" min="1.6" max="2.5" step="0.01"></label>
+    <p class="help">ギアは「回転数 ÷ 車速」の比率から計算した推定値です。メーターのギア表示とずれる場合は、6速か7速で一定速度で走ったときの表示を見て「最終減速比」を少しずつ変えてください。下の「自動調整」ボタンも使えます（停車中は使えません）。</p>
+    <div class="row"><button class="sec" id="b-learn">今のギアを「6速」として自動調整</button></div>
+
+    <h2>OBD2</h2>
+    <p class="help">Bluetooth LE（BLE）対応のELM327系アダプタに対応しています（Vgate iCar Pro BLE、OBDLink CXなど）。古いBluetooth方式（ペアリングでPINを入れるタイプ）はブラウザからは接続できません。接続ボタンを押すと機器の一覧が出るので、アダプタ名（OBDII、IOS-Vlink、OBDLinkなど）を選んでください。</p>
+
+    <div class="row"><button class="sec" id="b-reset">初期設定に戻す</button><button id="b-setclose">保存して閉じる</button></div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= 設定 ================= */
+const DEFAULTS = {theme:'orange', bright:100, flip:'h', shift:6200, coolwarn:110, trans:'zf8', fd:3.15, tire:2.06};
+let cfg = {...DEFAULTS};
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('hudcfg') || '{}')); } catch(e) {}
+function saveCfg(){ try { localStorage.setItem('hudcfg', JSON.stringify(cfg)); } catch(e) {} }
+
+const GEARSETS = {
+  zf8: [4.714, 3.143, 2.106, 1.667, 1.285, 1.000, 0.839, 0.667],
+  mt6: [4.110, 2.315, 1.542, 1.179, 1.000, 0.846]
+};
+
+const $ = id => document.getElementById(id);
+const hud = $('hud');
+
+/* ================= 状態 ================= */
+const S = {
+  gpsSpeed:null, gpsTime:0,
+  obd:{rpm:null, speed:null, cool:null, iat:null, map:null, baro:null, thr:null, volt:null, t:0},
+  demo:false, gear:null, gearCand:null, gearCount:0,
+  disp:{speed:0, rpm:0}
+};
+
+/* ================= セグメントバー ================= */
+function makeBar(el, n, redFrom){
+  el.innerHTML = '';
+  for (let i=0;i<n;i++){ const s=document.createElement('i'); if (redFrom!=null && i>=redFrom) s.className='red'; el.appendChild(s); }
+}
+function setBar(el, frac){
+  const segs = el.children, n = segs.length, k = Math.round(Math.max(0,Math.min(1,frac))*n);
+  for (let i=0;i<n;i++) segs[i].classList.toggle('on', i<k);
+}
+const RPM_MAX = 7000;
+function buildBars(){
+  makeBar($('rpmbar'), 35, Math.round(cfg.shift/RPM_MAX*35));
+  makeBar($('boostbar'), 16, 13);
+  makeBar($('thrbar'), 12);
+}
+
+/* ================= 設定の反映 ================= */
+function applyCfg(){
+  document.body.classList.remove('theme-green','theme-cyan');
+  if (cfg.theme!=='orange') document.body.classList.add('theme-'+cfg.theme);
+  hud.classList.remove('flip-h','flip-v','flip-hv');
+  if (cfg.flip!=='none') hud.classList.add('flip-'+cfg.flip);
+  hud.style.opacity = cfg.bright/100;
+  $('b-flip').textContent = '反転: ' + ({h:'左右',v:'上下',hv:'上下左右',none:'なし'})[cfg.flip];
+  buildBars();
+}
+
+/* ================= 時計 ================= */
+function tickClock(){
+  const d = new Date();
+  $('v-clock').textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+setInterval(tickClock, 1000); tickClock();
+
+/* ================= 画面スリープ防止 ================= */
+let wakeLock = null;
+async function keepAwake(){
+  try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', ()=>{ wakeLock=null; }); } } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState==='visible') keepAwake(); });
+
+async function goFull(){
+  try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen({navigationUI:'hide'}); } catch(e) {}
+  try { await screen.orientation.lock('landscape'); } catch(e) {}
+}
+
+/* ================= GPS ================= */
+let gpsWatch = null, lastPos = null;
+function startGps(){
+  if (!('geolocation' in navigator)) { note('この端末ではGPSが使えません'); return; }
+  if (gpsWatch!=null) return;
+  $('c-gps').className = 'chip busy';
+  gpsWatch = navigator.geolocation.watchPosition(pos => {
+    const c = pos.coords; let v = c.speed;
+    if ((v==null || isNaN(v)) && lastPos) {
+      const dt = (pos.timestamp - lastPos.timestamp)/1000;
+      if (dt>0.4) v = haversine(lastPos.coords, c)/dt;
+    }
+    lastPos = pos;
+    if (v!=null && !isNaN(v)) { S.gpsSpeed = Math.max(0, v*3.6); S.gpsTime = performance.now(); }
+    $('c-gps').className = 'chip on';
+  }, err => {
+    $('c-gps').className = 'chip err';
+    note(err.code===1 ? '位置情報が許可されていません（Chromeの設定で許可してください）' : 'GPS信号を待っています…');
+  }, {enableHighAccuracy:true, maximumAge:0, timeout:15000});
+  $('b-gps').classList.add('act'); $('b-gps').textContent='GPS動作中';
+}
+function haversine(a,b){
+  const R=6371000, toR=x=>x*Math.PI/180;
+  const dLat=toR(b.latitude-a.latitude), dLon=toR(b.longitude-a.longitude);
+  const h=Math.sin(dLat/2)**2+Math.cos(toR(a.latitude))*Math.cos(toR(b.latitude))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+/* ================= OBD2（Web Bluetooth / ELM327 BLE） ================= */
+const BLE_SERVICES = [
+  0xfff0, 0xffe0, 0x18f0, 0xffb0, 0xae30, 0xbeef,
+  'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+  '0000fff0-0000-1000-8000-00805f9b34fb'
+];
+const OBD = {dev:null, rx:null, tx:null, buf:'', pending:null, connected:false, running:false, noResp:0};
+
+async function connectObd(){
+  if (!navigator.bluetooth) { note('このブラウザはBluetooth接続に対応していません（AndroidのChromeで開いてください）'); return; }
+  if (OBD.connected) { disconnectObd(); return; }
+  try {
+    $('c-obd').className='chip busy'; note('アダプタを選んでください…');
+    const dev = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:BLE_SERVICES});
+    OBD.dev = dev;
+    dev.addEventListener('gattserverdisconnected', onObdLost);
+    note('接続中: ' + (dev.name||'不明な機器'));
+    const server = await dev.gatt.connect();
+    await findChars(server);
+    await OBD.rx.startNotifications();
+    OBD.rx.addEventListener('characteristicvaluechanged', onRx);
+    OBD.connected = true;
+    await initElm();
+    $('c-obd').className='chip on';
+    $('b-obd').classList.add('act'); $('b-obd').textContent='OBD2切断';
+    note('OBD2接続完了: ' + (dev.name||''));
+    pollLoop();
+  } catch(e) {
+    $('c-obd').className='chip err';
+    note('OBD2接続失敗: ' + (e && e.message ? e.message : e));
+    try { OBD.dev && OBD.dev.gatt.connected && OBD.dev.gatt.disconnect(); } catch(_) {}
+    OBD.connected=false;
+  }
+}
+
+async function findChars(server){
+  const services = await server.getPrimaryServices();
+  let best = null;
+  for (const svc of services){
+    let chars; try { chars = await svc.getCharacteristics(); } catch(e) { continue; }
+    const rx = chars.find(c => c.properties.notify || c.properties.indicate);
+    const tx = chars.find(c => c.properties.write || c.properties.writeWithoutResponse);
+    if (rx && tx) { best = {rx, tx}; break; }
+  }
+  if (!best) throw new Error('OBD2用の通信経路が見つかりません（対応していないアダプタの可能性）');
+  OBD.rx = best.rx; OBD.tx = best.tx;
+}
+
+function onRx(ev){
+  const v = ev.target.value;
+  let s = '';
+  for (let i=0;i<v.byteLength;i++) s += String.fromCharCode(v.getUint8(i));
+  OBD.buf += s;
+  if (OBD.buf.includes('>') && OBD.pending) {
+    const out = OBD.buf.replace(/>/g,'').trim();
+    OBD.buf = '';
+    const p = OBD.pending; OBD.pending = null; clearTimeout(p.timer); p.resolve(out);
+  }
+}
+
+async function writeCmd(cmd){
+  const data = new TextEncoder().encode(cmd + '\r');
+  for (let i=0;i<data.length;i+=20){
+    const chunk = data.slice(i,i+20);
+    if (OBD.tx.properties.writeWithoutResponse && OBD.tx.writeValueWithoutResponse) await OBD.tx.writeValueWithoutResponse(chunk);
+    else if (OBD.tx.writeValueWithResponse) await OBD.tx.writeValueWithResponse(chunk);
+    else await OBD.tx.writeValue(chunk);
+  }
+}
+
+function send(cmd, timeout=1500){
+  return new Promise(async (resolve) => {
+    if (!OBD.connected) return resolve('');
+    OBD.buf = '';
+    const timer = setTimeout(() => { if (OBD.pending) { OBD.pending=null; resolve(''); } }, timeout);
+    OBD.pending = {resolve, timer};
+    try { await writeCmd(cmd); } catch(e) { clearTimeout(timer); OBD.pending=null; resolve(''); }
+  });
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function initElm(){
+  await send('ATZ', 2500); await sleep(300);
+  for (const c of ['ATE0','ATL0','ATS0','ATH0','ATAT1','ATST64']) await send(c, 1000);
+  await send('ATSP6', 1000);               // F32はCAN 500kbps 11bit
+  let r = await send('0100', 4000);
+  if (!/4100/.test(clean(r))) {
+    await send('ATSP0', 1000);              // 自動判別に切り替え
+    r = await send('0100', 8000);
+    if (!/4100/.test(clean(r))) throw new Error('車両から応答がありません（エンジン/イグニッションONか確認）');
+  }
+  const b = parsePid(await send('0133'), '33');
+  if (b) S.obd.baro = b[0];
+}
+
+function clean(r){ return (r||'').toUpperCase().replace(/SEARCHING\.\.\./g,'').replace(/\s+/g,''); }
+function parsePid(resp, pid){
+  const s = clean(resp);
+  const i = s.indexOf('41'+pid);
+  if (i<0) return null;
+  const hex = s.slice(i+4);
+  const bytes = [];
+  for (let k=0;k+1<hex.length && bytes.length<4;k+=2){
+    const v = parseInt(hex.substr(k,2),16); if (isNaN(v)) break; bytes.push(v);
+  }
+  return bytes.length ? bytes : null;
+}
+
+const SLOW = ['05','0B','0F','11','RV','0B','11'];
+async function pollLoop(){
+  if (OBD.running) return; OBD.running = true;
+  let n = 0;
+  while (OBD.connected){
+    const t0 = performance.now();
+    const r1 = parsePid(await send('010C'), '0C');
+    if (r1 && r1.length>=2) { S.obd.rpm = (r1[0]*256 + r1[1])/4; OBD.noResp=0; } else OBD.noResp++;
+    const r2 = parsePid(await send('010D'), '0D');
+    if (r2) S.obd.speed = r2[0];
+    const p = SLOW[n % SLOW.length]; n++;
+    if (p==='RV') {
+      const v = parseFloat(clean(await send('ATRV')).replace(/[^0-9.]/g,''));
+      if (!isNaN(v)) S.obd.volt = v;
+    } else {
+      const r = parsePid(await send('01'+p), p);
+      if (r) {
+        if (p==='05') S.obd.cool = r[0]-40;
+        if (p==='0B') S.obd.map = r[0];
+        if (p==='0F') S.obd.iat = r[0]-40;
+        if (p==='11') S.obd.thr = r[0]*100/255;
+      }
+    }
+    S.obd.t = performance.now();
+    if (OBD.noResp > 15) note('車両の応答が途切れています…');
+    const dt = performance.now()-t0; if (dt<40) await sleep(40-dt);
+  }
+  OBD.running = false;
+}
+
+function onObdLost(){
+  OBD.connected = false; OBD.pending = null;
+  $('c-obd').className='chip err';
+  $('b-obd').classList.remove('act'); $('b-obd').textContent='OBD2再接続';
+  note('OBD2が切断されました。「OBD2再接続」を押してください');
+}
+function disconnectObd(){
+  OBD.connected = false;
+  try { OBD.dev && OBD.dev.gatt.disconnect(); } catch(e) {}
+  $('c-obd').className='chip';
+  $('b-obd').classList.remove('act'); $('b-obd').textContent='OBD2接続';
+  for (const k in S.obd) S.obd[k] = (k==='baro'? S.obd.baro : null);
+}
+
+/* ================= ギア推定 ================= */
+function rpmPerKmh(ratio){ return ratio * cfg.fd * 1000 / (60 * cfg.tire); }
+function estimateGear(rpm, kmh, thr){
+  if (rpm==null || kmh==null) return null;
+  if (kmh < 4) return 'N';
+  const actual = rpm / kmh;
+  const set = GEARSETS[cfg.trans] || GEARSETS.zf8;
+  let best = null, bestErr = 1e9;
+  set.forEach((r,i) => {
+    const err = Math.abs(actual - rpmPerKmh(r)) / rpmPerKmh(r);
+    if (err < bestErr) { bestErr = err; best = i+1; }
+  });
+  return bestErr < 0.12 ? best : null;   // トルコン滑り・変速中は保留
+}
+function smoothGear(g){
+  if (g==null) return;
+  if (g===S.gearCand) S.gearCount++; else { S.gearCand=g; S.gearCount=1; }
+  if (S.gearCount >= 2) S.gear = g;
+}
+
+/* ================= デモ ================= */
+let demoT = 0, demoState = {kmh:0, gear:1, thr:0, cool:40, iat:24};
+function demoStep(dt){
+  demoT += dt;
+  const cycle = demoT % 40;
+  let target;
+  if (cycle < 14) { demoState.thr = 70 + 25*Math.sin(demoT*0.7); target = 125; }
+  else if (cycle < 22) { demoState.thr = 18; target = 80; }
+  else if (cycle < 32) { demoState.thr = 0; target = 0; }
+  else { demoState.thr = 0; target = 0; }
+  const acc = demoState.thr>20 ? (demoState.thr/100)*10*dt*(1 - demoState.kmh/180) : (target<demoState.kmh ? -8*dt : 0);
+  demoState.kmh = Math.max(0, demoState.kmh + acc);
+  const set = GEARSETS[cfg.trans] || GEARSETS.zf8;
+  let rpm = rpmPerKmh(set[demoState.gear-1]) * demoState.kmh;
+  const up = demoState.thr>60 ? 6400 : 2200;
+  if (rpm > up && demoState.gear < set.length) demoState.gear++;
+  if (demoState.gear>1 && rpm < 1150) demoState.gear--;
+  rpm = Math.max(750, rpmPerKmh(set[demoState.gear-1]) * demoState.kmh);
+  demoState.cool = Math.min(92, demoState.cool + dt*0.8);
+  return {
+    rpm, speed: demoState.kmh, thr: demoState.thr,
+    map: 101 + (demoState.thr>40 ? (demoState.thr-40)/60*110 : -60 + demoState.thr),
+    baro: 101, cool: demoState.cool, iat: demoState.iat + demoState.thr*0.05, volt: 14.2 + 0.1*Math.sin(demoT)
+  };
+}
+
+/* ================= 描画ループ ================= */
+let lastFrame = performance.now();
+function fmt(v, d, w){ return v==null || isNaN(v) ? w : v.toFixed(d); }
+
+function frame(now){
+  const dt = Math.min(0.1, (now - lastFrame)/1000); lastFrame = now;
+  let D = null, src = 'NO SIGNAL';
+  const obdFresh = OBD.connected && S.obd.t && (now - S.obd.t) < 3000;
+  if (S.demo) { D = demoStep(dt); src = 'DEMO'; }
+  else if (obdFresh) { D = {...S.obd}; src = 'OBD2'; }
+  else D = {};
+  if (!S.demo && !obdFresh && S.gpsSpeed!=null && (now - S.gpsTime) < 5000) { D.speed = S.gpsSpeed; src = 'GPS'; }
+  else if (!S.demo && obdFresh && D.speed==null && S.gpsSpeed!=null) { D.speed = S.gpsSpeed; src='GPS+OBD2'; }
+
+  // 表示用スムージング
+  const k = 1 - Math.exp(-dt*10);
+  if (D.speed!=null) S.disp.speed += (D.speed - S.disp.speed)*k;
+  if (D.rpm!=null) S.disp.rpm += (D.rpm - S.disp.rpm)*k;
+
+  $('v-speed').textContent = D.speed==null ? '---' : Math.round(S.disp.speed);
+  $('v-src').textContent = src;
+  $('v-rpm').textContent = D.rpm==null ? '----' : Math.round(S.disp.rpm/50)*50;
+  setBar($('rpmbar'), D.rpm==null ? 0 : S.disp.rpm / RPM_MAX);
+
+  let boost = null;
+  if (D.map!=null) boost = (D.map - (D.baro || S.obd.baro || 101)) / 100;
+  $('v-boost').textContent = boost==null ? '-.--' : (boost>=0?'+':'') + boost.toFixed(2);
+  setBar($('boostbar'), boost==null ? 0 : (boost + 0.2)/1.6);
+
+  $('v-cool').textContent = fmt(D.cool, 0, '---');
+  $('s-cool').classList.toggle('warn', D.cool!=null && D.cool >= cfg.coolwarn);
+  $('v-iat').textContent = fmt(D.iat, 0, '---');
+  $('v-volt').textContent = fmt(D.volt, 1, '--.-');
+  $('s-volt').classList.toggle('warn', D.volt!=null && (D.volt < 12.0 || D.volt > 15.2));
+  $('v-thr').textContent = D.thr==null ? '--' : Math.round(D.thr);
+  setBar($('thrbar'), D.thr==null ? 0 : D.thr/100);
+
+  // ギア
+  if (S.demo) S.gear = demoState.kmh < 4 ? 'N' : demoState.gear;
+  else if (obdFresh) smoothGear(estimateGear(D.rpm, D.speed, D.thr));
+  else S.gear = null;
+  $('v-gear').textContent = S.gear==null ? '-' : S.gear;
+
+  // シフト警告
+  const shift = D.rpm!=null && D.rpm >= cfg.shift;
+  hud.classList.toggle('shift', shift);
+  hud.classList.toggle('shift-blink', D.rpm!=null && D.rpm >= cfg.shift + 300);
+
+  // メッセージ
+  const msg = $('v-msg');
+  let text = '', alert = false;
+  if (D.cool!=null && D.cool >= cfg.coolwarn) { text = '警告 ─ 冷却水温 上昇'; alert = true; }
+  else if (D.volt!=null && D.volt < 12.0) { text = '警告 ─ 電圧低下'; alert = true; }
+  else if (shift) { text = 'SHIFT UP ─ 回転上限'; alert = true; }
+  else if (src==='NO SIGNAL') text = '待機中 ─ STANDBY';
+  else if (D.cool!=null && D.cool < 60) text = '暖機中 ─ WARMING UP';
+  else text = '全系統 正常 ─ ALL SYSTEMS NOMINAL';
+  if (msg.textContent !== text) msg.textContent = text;
+  msg.classList.toggle('alert', alert);
+
+  requestAnimationFrame(frame);
+}
+
+/* ================= 操作 ================= */
+let ctlTimer = null;
+function showCtl(){ $('ctl').classList.add('show'); clearTimeout(ctlTimer); ctlTimer = setTimeout(hideCtl, 8000); }
+function hideCtl(){ $('ctl').classList.remove('show'); }
+function note(t){ $('ctl-note').textContent = t; showCtl(); }
+
+hud.addEventListener('click', () => { $('ctl').classList.contains('show') ? hideCtl() : showCtl(); });
+$('ctl').addEventListener('click', () => showCtl());
+
+$('btn-go').addEventListener('click', async () => {
+  $('start').style.display = 'none';
+  await goFull(); keepAwake();
+  startGps();
+  showCtl();
+});
+$('b-gps').addEventListener('click', startGps);
+$('b-obd').addEventListener('click', connectObd);
+$('b-demo').addEventListener('click', () => {
+  S.demo = !S.demo; demoT = 0; demoState.kmh = 0; demoState.gear = 1;
+  $('b-demo').classList.toggle('act', S.demo);
+  $('c-demo').className = 'chip' + (S.demo ? ' on' : '');
+});
+$('b-flip').addEventListener('click', () => {
+  const order = ['h','v','hv','none'];
+  cfg.flip = order[(order.indexOf(cfg.flip)+1) % order.length];
+  saveCfg(); applyCfg();
+});
+$('b-full').addEventListener('click', () => { goFull(); keepAwake(); });
+$('b-close').addEventListener('click', e => { e.stopPropagation(); hideCtl(); });
+
+/* 設定画面 */
+const fields = {theme:'o-theme', bright:'o-bright', flip:'o-flip', shift:'o-shift', coolwarn:'o-coolwarn', trans:'o-trans', fd:'o-fd', tire:'o-tire'};
+function fillSettings(){ for (const k in fields) $(fields[k]).value = cfg[k]; }
+function readSettings(){
+  for (const k in fields){
+    const el = $(fields[k]);
+    cfg[k] = (typeof DEFAULTS[k]==='number') ? (parseFloat(el.value) || DEFAULTS[k]) : el.value;
+  }
+}
+$('b-set').addEventListener('click', () => { fillSettings(); $('settings').classList.add('show'); hideCtl(); });
+$('o-bright').addEventListener('input', () => { hud.style.opacity = $('o-bright').value/100; });
+$('b-setclose').addEventListener('click', () => { readSettings(); saveCfg(); applyCfg(); $('settings').classList.remove('show'); });
+$('b-reset').addEventListener('click', () => { cfg = {...DEFAULTS}; fillSettings(); });
+$('b-learn').addEventListener('click', () => {
+  const rpm = S.obd.rpm, kmh = S.obd.speed;
+  if (!OBD.connected || rpm==null || !kmh || kmh < 20) { $('b-learn').textContent = 'OBD2接続中・時速20km以上で6速走行中に押してください'; return; }
+  const set = GEARSETS[cfg.trans] || GEARSETS.zf8;
+  const fd = (rpm/kmh) * 60 * cfg.tire / (set[5] * 1000);
+  cfg.fd = Math.round(fd*1000)/1000; $('o-fd').value = cfg.fd;
+  $('b-learn').textContent = '最終減速比を ' + cfg.fd + ' に調整しました';
+});
+
+applyCfg();
+requestAnimationFrame(frame);
+
+/* テスト用: URLの末尾に #demo を付けるとデモで起動 */
+if (location.hash === '#demo') { $('start').style.display='none'; $('b-demo').click(); }
+})();
+</script>
+</body>
+</html>
