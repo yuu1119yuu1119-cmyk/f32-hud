@@ -110,6 +110,26 @@ body.calib #cal{display:block}
 .footer .msg{flex:1;text-align:right;font-family:var(--jp);font-size:3vh;letter-spacing:.15em}
 .footer .msg.alert{color:var(--alert);animation:blink .5s steps(2) infinite}
 
+/* ===== Aピラー用（縦画面・エンジンパネルのみ） ===== */
+body.pillar #hud{grid-template-columns:1fr;padding:3vh 6vw;gap:2.4vh 0}
+body.pillar .header{grid-column:1;height:6vh;gap:3vw}
+body.pillar .stripe{flex-basis:11vw}
+body.pillar .title .jp{font-size:2.3vh;letter-spacing:.05em;white-space:nowrap}
+body.pillar .title .en{font-size:1.4vh;letter-spacing:.2em}
+body.pillar .clock{font-size:4.4vh}
+body.pillar .speed,body.pillar .right{display:none}
+body.pillar .stats{grid-column:1;padding:3vh 5vw}
+body.pillar .ptag{left:6vw;font-size:1.9vh;top:-1.5vh}
+body.pillar .stat .lbl .jp{font-size:3vh}
+body.pillar .stat .lbl .en{font-size:1.6vh}
+body.pillar .stat .val{font-size:8.6vh}
+body.pillar .stat .unit{font-size:2.2vh}
+body.pillar .segbar{height:2vh;gap:1vw}
+body.pillar .footer{grid-column:1;flex-wrap:wrap;height:auto;gap:1vh 5vw;font-size:1.8vh}
+body.pillar .chip{gap:1.5vw}
+body.pillar .footer .msg{flex-basis:100%;text-align:left;font-size:2.2vh}
+#start .go2{margin-top:10px;background:#000;color:var(--main);border:2px solid var(--main)}
+
 /* シフトアップ警告 */
 #hud.shift .gear{border-color:var(--alert);background:rgba(255,42,26,.18)}
 #hud.shift #v-gear{color:var(--alert)}
@@ -209,12 +229,13 @@ body.calib #cal{display:block}
     <h1>走行監視システム 起動</h1>
     <div>スマホを使った疑似HUDです。画面を左右反転して表示するので、フロントガラスに映すと正しい向きで読めます。</div>
     <ol>
-      <li>スマホを横向きにして、<b>画面の上側を自分のほうに向けて</b>ダッシュボードに平らに置きます。</li>
+      <li>スマホを横向き（Aピラー用は縦向き）にして、<b>画面の上側を自分のほうに向けて</b>ダッシュボードに平らに置きます。</li>
       <li>画面の明るさを最大にして、自動回転はオフにしておくと安定します。</li>
       <li>画面をタップすると操作パネルが出ます（GPS・OBD2接続・デモ・反転・設定）。</li>
       <li>走行中は操作しないでください。設定は停車中に。</li>
     </ol>
-    <button class="go" id="btn-go">起動する（全画面）</button>
+    <button class="go" id="btn-go">中央HUD（横画面）で起動</button>
+    <button class="go go2" id="btn-go-p">Aピラー用（縦画面・エンジン表示）で起動</button>
   </div>
 </div>
 
@@ -225,6 +246,7 @@ body.calib #cal{display:block}
     <button id="b-obd">OBD2接続</button>
     <button id="b-demo">デモ</button>
     <button id="b-flip">反転: 左右</button>
+    <button id="b-layout">表示: 中央HUD</button>
     <button id="b-warp">補正: オン</button>
     <button id="b-cal">歪み調整</button>
     <button id="b-full">全画面</button>
@@ -285,7 +307,10 @@ body.calib #cal{display:block}
 const WARP_PRESET = [[0.1388,0.0833],[0.9252,0.0987],[0.9151,0.9218],[0.0100,0.9454]]; // F32運転席からの写真で推定
 const WARP_NONE   = [[0,0],[1,0],[1,1],[0,1]];
 const DEFAULTS = {theme:'orange', bright:100, flip:'h', shift:6200, coolwarn:110, trans:'zf8', fd:3.15, tire:2.06,
-                  warp:'1', wq:WARP_PRESET};
+                  warp:'1', wq:WARP_PRESET, layout:'main', warpp:'0', wqp:WARP_NONE};
+// 歪み補正は「中央HUD」と「Aピラー用」で別々に保存する
+const isPillar = () => cfg.layout === 'pillar';
+const wk = () => isPillar() ? {w:'warpp', q:'wqp', preset:WARP_NONE} : {w:'warp', q:'wq', preset:WARP_PRESET};
 let cfg = {...DEFAULTS};
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('hudcfg') || '{}')); } catch(e) {}
 function saveCfg(){ try { localStorage.setItem('hudcfg', JSON.stringify(cfg)); } catch(e) {} }
@@ -328,8 +353,12 @@ function applyCfg(){
   if (cfg.theme!=='orange') document.body.classList.add('theme-'+cfg.theme);
   applyTransform();
   hud.style.opacity = cfg.bright/100;
-  $('b-warp').textContent = '補正: ' + (cfg.warp==='1' ? 'オン' : 'オフ（元の表示）');
-  $('b-warp').classList.toggle('act', cfg.warp==='1');
+  document.body.classList.toggle('pillar', isPillar());
+  $('b-layout').textContent = '表示: ' + (isPillar() ? 'Aピラー（縦）' : '中央HUD（横）');
+  const won = cfg[wk().w]==='1';
+  $('b-warp').textContent = '補正: ' + (won ? 'オン' : 'オフ（元の表示）');
+  $('b-warp').classList.toggle('act', won);
+  $('c-preset').style.display = isPillar() ? 'none' : '';
   $('b-flip').textContent = '反転: ' + ({h:'左右',v:'上下',hv:'上下左右',none:'なし'})[cfg.flip];
   buildBars();
 }
@@ -352,7 +381,7 @@ function homography(src, dst){
   const h = b.map((v,i)=>v/A[i][i]);
   return [[h[0],h[1],h[2]],[h[3],h[4],h[5]],[h[6],h[7],1]];
 }
-function warpQuad(){ return cfg.warp==='1' && Array.isArray(cfg.wq) && cfg.wq.length===4 ? cfg.wq : WARP_NONE; }
+function warpQuad(){ const k = wk(), q = cfg[k.q]; return cfg[k.w]==='1' && Array.isArray(q) && q.length===4 ? q : WARP_NONE; }
 function applyTransform(){
   const W = innerWidth, H = innerHeight;
   const q = warpQuad();
@@ -401,7 +430,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 async function goFull(){
   try { if (!document.fullscreenElement) await document.documentElement.requestFullscreen({navigationUI:'hide'}); } catch(e) {}
-  try { await screen.orientation.lock('landscape'); } catch(e) {}
+  try { await screen.orientation.lock(isPillar() ? 'portrait' : 'landscape'); } catch(e) {}
 }
 
 /* ================= GPS ================= */
@@ -703,11 +732,17 @@ function note(t){ $('ctl-note').textContent = t; showCtl(); }
 hud.addEventListener('click', () => { $('ctl').classList.contains('show') ? hideCtl() : showCtl(); });
 $('ctl').addEventListener('click', () => showCtl());
 
-$('btn-go').addEventListener('click', async () => {
+async function launch(layout){
+  cfg.layout = layout; saveCfg(); applyCfg();
   $('start').style.display = 'none';
   await goFull(); keepAwake();
   startGps();
   showCtl();
+}
+$('btn-go').addEventListener('click', () => launch('main'));
+$('btn-go-p').addEventListener('click', () => launch('pillar'));
+$('b-layout').addEventListener('click', () => {
+  cfg.layout = isPillar() ? 'main' : 'pillar'; saveCfg(); applyCfg(); goFull();
 });
 $('b-gps').addEventListener('click', startGps);
 $('b-obd').addEventListener('click', connectObd);
@@ -726,21 +761,23 @@ $('b-close').addEventListener('click', e => { e.stopPropagation(); hideCtl(); })
 
 /* 歪み調整モード */
 function openCal(){
-  if (cfg.warp!=='1') { cfg.warp='1'; if (!Array.isArray(cfg.wq)) cfg.wq = WARP_PRESET.map(p=>p.slice()); applyCfg(); }
-  cfg.wq = cfg.wq.map(p=>p.slice());
+  const k = wk();
+  if (!Array.isArray(cfg[k.q]) || cfg[k.q].length!==4) cfg[k.q] = k.preset.map(p=>p.slice());
+  cfg[k.q] = cfg[k.q].map(p=>p.slice());
+  if (cfg[k.w]!=='1') { cfg[k.w]='1'; applyCfg(); }
   document.body.classList.add('calib'); hideCtl(); placeHandles();
 }
 $('b-cal').addEventListener('click', e => { e.stopPropagation(); openCal(); });
-$('b-warp').addEventListener('click', () => { cfg.warp = cfg.warp==='1' ? '0' : '1'; saveCfg(); applyCfg(); });
+$('b-warp').addEventListener('click', () => { const k = wk(); cfg[k.w] = cfg[k.w]==='1' ? '0' : '1'; saveCfg(); applyCfg(); });
 $('c-done').addEventListener('click', () => { document.body.classList.remove('calib'); saveCfg(); });
-$('c-preset').addEventListener('click', () => { cfg.wq = WARP_PRESET.map(p=>p.slice()); applyTransform(); });
-$('c-none').addEventListener('click', () => { cfg.wq = WARP_NONE.map(p=>p.slice()); applyTransform(); });
+$('c-preset').addEventListener('click', () => { cfg[wk().q] = wk().preset.map(p=>p.slice()); applyTransform(); });
+$('c-none').addEventListener('click', () => { cfg[wk().q] = WARP_NONE.map(p=>p.slice()); applyTransform(); });
 document.querySelectorAll('.handle').forEach(h => {
   h.addEventListener('pointerdown', e => {
     e.preventDefault(); h.setPointerCapture(e.pointerId);
     const move = ev => {
       const [u,v] = fromScreen(ev.clientX, ev.clientY);
-      cfg.wq[+h.dataset.i] = [Math.max(-0.2,Math.min(1.2,u)), Math.max(-0.2,Math.min(1.2,v))];
+      cfg[wk().q][+h.dataset.i] = [Math.max(-0.2,Math.min(1.2,u)), Math.max(-0.2,Math.min(1.2,v))];
       applyTransform();
     };
     const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up); saveCfg(); };
@@ -749,18 +786,19 @@ document.querySelectorAll('.handle').forEach(h => {
 });
 
 /* 設定画面 */
-const fields = {theme:'o-theme', bright:'o-bright', flip:'o-flip', warp:'o-warp', shift:'o-shift', coolwarn:'o-coolwarn', trans:'o-trans', fd:'o-fd', tire:'o-tire'};
-function fillSettings(){ for (const k in fields) $(fields[k]).value = cfg[k]; }
+const fields = {theme:'o-theme', bright:'o-bright', flip:'o-flip', shift:'o-shift', coolwarn:'o-coolwarn', trans:'o-trans', fd:'o-fd', tire:'o-tire'};
+function fillSettings(){ for (const k in fields) $(fields[k]).value = cfg[k]; $('o-warp').value = cfg[wk().w]; }
 function readSettings(){
   for (const k in fields){
     const el = $(fields[k]);
     cfg[k] = (typeof DEFAULTS[k]==='number') ? (parseFloat(el.value) || DEFAULTS[k]) : el.value;
   }
+  cfg[wk().w] = $('o-warp').value;
 }
 $('b-set').addEventListener('click', () => { fillSettings(); $('settings').classList.add('show'); hideCtl(); });
 $('o-bright').addEventListener('input', () => { hud.style.opacity = $('o-bright').value/100; });
 $('b-setclose').addEventListener('click', () => { readSettings(); saveCfg(); applyCfg(); $('settings').classList.remove('show'); });
-$('b-reset').addEventListener('click', () => { cfg = {...DEFAULTS, wq: WARP_PRESET.map(p=>p.slice())}; fillSettings(); });
+$('b-reset').addEventListener('click', () => { cfg = {...DEFAULTS, wq: WARP_PRESET.map(p=>p.slice()), wqp: WARP_NONE.map(p=>p.slice()), layout: cfg.layout}; fillSettings(); });
 $('b-learn').addEventListener('click', () => {
   const rpm = S.obd.rpm, kmh = S.obd.speed;
   if (!OBD.connected || rpm==null || !kmh || kmh < 20) { $('b-learn').textContent = 'OBD2接続中・時速20km以上で6速走行中に押してください'; return; }
@@ -775,6 +813,7 @@ requestAnimationFrame(frame);
 
 /* テスト用: URLの末尾に #demo を付けるとデモで起動 */
 if (location.hash === '#demo') { $('start').style.display='none'; $('b-demo').click(); }
+if (location.hash === '#pillar-demo') { cfg.layout='pillar'; applyCfg(); $('start').style.display='none'; $('b-demo').click(); }
 })();
 </script>
 </body>
